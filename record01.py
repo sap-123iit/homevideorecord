@@ -55,25 +55,31 @@ def uploader_loop():
 
     while True:
         try:
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            print(f"\n[Uploader] Starting videoupload.py at {timestamp}...")
+            # Check if videoupload.py is already running
+            result = subprocess.run(["pgrep", "-f", "videoupload.py"], stdout=subprocess.PIPE)
+            if result.stdout:  # Some PID(s) found → already running
+                print("[Uploader] videoupload.py is already running. Skipping this cycle.")
+            else:
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                print(f"\n[Uploader] Starting videoupload.py at {timestamp}...")
 
-            # Append timestamp to log file
-            try:
-                with open(log_file, "a") as log:
-                    log.write(f"videoupload.py called at {timestamp}\n")
-            except Exception as e:
-                print(f"[Uploader] Error writing to log file: {e}")
+                # Append timestamp to log file
+                try:
+                    with open(log_file, "a") as log:
+                        log.write(f"videoupload.py called at {timestamp}\n")
+                except Exception as e:
+                    print(f"[Uploader] Error writing to log file: {e}")
 
-            # Run upload (blocking, no overlap)
-            subprocess.run(["python3", "videoupload.py"], check=False)
-            print(f"[Uploader] videoupload.py finished at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}.\n")
+                # Run upload (blocking, no overlap)
+                subprocess.run(["python3", "videoupload.py"], check=False)
+                print(f"[Uploader] videoupload.py finished at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}.\n")
 
         except Exception as e:
             print(f"[Uploader] Error running videoupload.py: {e}")
 
         # Wait 20 minutes before the next run
         time.sleep(UPLOAD_INTERVAL)
+
 
 
 def initialize_captures():
