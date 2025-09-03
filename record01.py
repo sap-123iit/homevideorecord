@@ -63,23 +63,25 @@ def uploader_loop():
         time.sleep(UPLOAD_INTERVAL)
 
 def initialize_captures():
-    """Initialize RTSP stream captures with error handling."""
-    cap1 = cv2.VideoCapture('rtsp://admin:Stoploss%231@192.168.0.100:554/Streaming/channels/102')
-    cap2 = cv2.VideoCapture('rtsp://admin:Stoploss%231@192.168.0.100:554/Streaming/channels/202')
-    if not (cap1.isOpened() and cap2.isOpened()):
-        print("Error: Could not open one or both RTSP streams.")
-        if cap1.isOpened():
-            cap1.release()
-        if cap2.isOpened():
-            cap2.release()
-        return None, None
-    return cap1, cap2
+    """Initialize RTSP stream captures with error handling for 4 channels."""
+    cap1 = cv2.VideoCapture('rtsp://admin:Stoploss%231@192.168.0.100:554/Streaming/channels/101')
+    cap2 = cv2.VideoCapture('rtsp://admin:Stoploss%231@192.168.0.100:554/Streaming/channels/201')
+    cap3 = cv2.VideoCapture('rtsp://admin:Stoploss%231@192.168.0.100:554/Streaming/channels/301')
+    cap4 = cv2.VideoCapture('rtsp://admin:Stoploss%231@192.168.0.100:554/Streaming/channels/401')
+
+    if not (cap1.isOpened() and cap2.isOpened() and cap3.isOpened() and cap4.isOpened()):
+        print("Error: Could not open one or more RTSP streams.")
+        for cap in [cap1, cap2, cap3, cap4]:
+            if cap.isOpened():
+                cap.release()
+        return None, None, None, None
+    return cap1, cap2, cap3, cap4
 
 def record_and_stitch():
     while True:
         # Initialize captures
-        cap1, cap2 = initialize_captures()
-        if cap1 is None or cap2 is None:
+        cap1, cap2, cap3, cap4 = initialize_captures()
+        if cap1 is None:
             print(f"Waiting {ERROR_WAIT} seconds before retrying...")
             time.sleep(ERROR_WAIT)
             continue
@@ -92,11 +94,12 @@ def record_and_stitch():
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_filename = os.path.join(output_folder, f"recording_{timestamp}.mp4")
 
-        out = cv2.VideoWriter(output_filename, FOURCC, fps, (TARGET_WIDTH * 2, TARGET_HEIGHT))
+        # Output size = 2 × width, 2 × height (grid)
+        out = cv2.VideoWriter(output_filename, FOURCC, fps, (TARGET_WIDTH * 2, TARGET_HEIGHT * 2))
         if not out.isOpened():
             print("Error: Unable to open VideoWriter")
-            cap1.release()
-            cap2.release()
+            for cap in [cap1, cap2, cap3, cap4]:
+                cap.release()
             print(f"Waiting {ERROR_WAIT} seconds before retrying...")
             time.sleep(ERROR_WAIT)
             continue
@@ -108,23 +111,30 @@ def record_and_stitch():
         while (time.time() - start_time) < DURATION:
             ret1, frame1 = cap1.read()
             ret2, frame2 = cap2.read()
-            if not (ret1 and ret2):
-                print("Error: Failed to capture frame from one or both streams.")
+            ret3, frame3 = cap3.read()
+            ret4, frame4 = cap4.read()
+            if not (ret1 and ret2 and ret3 and ret4):
+                print("Error: Failed to capture frame from one or more streams.")
                 capture_success = False
                 break
 
-            # Resize both frames
+            # Resize all frames
             frame1 = cv2.resize(frame1, (TARGET_WIDTH, TARGET_HEIGHT))
             frame2 = cv2.resize(frame2, (TARGET_WIDTH, TARGET_HEIGHT))
+            frame3 = cv2.resize(frame3, (TARGET_WIDTH, TARGET_HEIGHT))
+            frame4 = cv2.resize(frame4, (TARGET_WIDTH, TARGET_HEIGHT))
 
-            # Stitch horizontally
-            combined_frame = cv2.hconcat([frame1, frame2])
+            # Top row: CH101 + CH201
+            top_row = cv2.hconcat([frame1, frame2])
+            # Bottom row: CH301 + CH401
+            bottom_row = cv2.hconcat([frame3, frame4])
+
+            # Stack vertically → 2×2 grid
+            combined_frame = cv2.vconcat([top_row, bottom_row])
             out.write(combined_frame)
 
-            # Optional: live preview
+            # Optional preview
             cv2.imshow('Recording', combined_frame)
-
-            # Stop with 'q'
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 capture_success = False
                 break
@@ -132,6 +142,8 @@ def record_and_stitch():
         out.release()
         cap1.release()
         cap2.release()
+        cap3.release()
+        cap4.release()
 
         if not capture_success:
             print(f"Capture failed, deleting {output_filename} if it exists")
