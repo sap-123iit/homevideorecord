@@ -49,18 +49,32 @@ def compress_with_ffmpeg(input_file):
         return False
 
 def uploader_loop():
-    """Run videoupload.py immediately, then every UPLOAD_INTERVAL seconds without overlap."""
+    """Run videoupload.py immediately, then every UPLOAD_INTERVAL seconds without overlap.
+       Maintain a log of each run in videoupload_log.txt."""
+    log_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "videoupload_log.txt")
+
     while True:
         try:
-            print("\n[Uploader] Starting videoupload.py...")
-            # Wait until upload finishes (no overlap) and show logs in terminal
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            print(f"\n[Uploader] Starting videoupload.py at {timestamp}...")
+
+            # Append timestamp to log file
+            try:
+                with open(log_file, "a") as log:
+                    log.write(f"videoupload.py called at {timestamp}\n")
+            except Exception as e:
+                print(f"[Uploader] Error writing to log file: {e}")
+
+            # Run upload (blocking, no overlap)
             subprocess.run(["python3", "videoupload.py"], check=False)
-            print("[Uploader] videoupload.py finished.\n")
+            print(f"[Uploader] videoupload.py finished at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}.\n")
+
         except Exception as e:
             print(f"[Uploader] Error running videoupload.py: {e}")
-        
+
         # Wait 20 minutes before the next run
         time.sleep(UPLOAD_INTERVAL)
+
 
 def initialize_captures():
     """Initialize RTSP stream captures with error handling for 4 channels."""
