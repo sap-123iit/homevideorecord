@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=Video Record
+Type=Application
+Comment=Start video recording script
+Exec=/usr/bin/python3 /home/pi/homevideo/record01.py
+Terminal=false

@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=Video Upload
+Type=Application
+Comment=Start video upload script
+Exec=/usr/bin/python3 /home/pi/homevideo/videoupload.py
+Terminal=false
