@@ -30,7 +30,7 @@ def append_to_recorded_list(filename):
         print(f"Error appending {filename} to {RECORDED_LIST_FILE}: {e}")
 
 def compress_with_ffmpeg(input_file):
-    """Compress video with ffmpeg and overwrite original."""
+    """Compress video with ffmpeg and overwrite only if size is reduced."""
     compressed_file = input_file.replace("_ongoing.mp4", ".mp4")
     try:
         subprocess.run([
@@ -39,11 +39,23 @@ def compress_with_ffmpeg(input_file):
             "-an",
             compressed_file
         ], check=True)
-        os.remove(input_file)
-        print(f"Compressed and renamed: {compressed_file}")
-        return compressed_file
+        
+        original_size = os.path.getsize(input_file)
+        compressed_size = os.path.getsize(compressed_file)
+
+        if compressed_size < original_size:
+            os.remove(input_file)
+            print(f"Compression successful, renamed to {compressed_file}")
+            return compressed_file
+        else:
+            print("Compression did not reduce file size; keeping original.")
+            os.remove(compressed_file)
+            return None
+
     except Exception as e:
         print(f"FFmpeg compression failed for {input_file}: {e}")
+        if os.path.exists(compressed_file):
+            os.remove(compressed_file)
         return None
 
 def initialize_captures():
@@ -130,12 +142,7 @@ def record_and_stitch():
         if compressed_file:
             append_to_recorded_list(os.path.basename(compressed_file))
         else:
-            print(f"Compression failed, deleting {ongoing_filename}")
-            if os.path.exists(ongoing_filename):
-                os.remove(ongoing_filename)
-            print(f"Waiting {ERROR_WAIT} seconds before retrying...")
-            time.sleep(ERROR_WAIT)
-            continue
+            print(f"Compression did not succeed in reducing size; keeping {ongoing_filename}")
 
 if __name__ == "__main__":
     try:
