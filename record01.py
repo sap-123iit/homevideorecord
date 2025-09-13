@@ -10,7 +10,6 @@ output_folder = "/home/pi/homevideo"
 if not os.path.exists(output_folder):
     os.makedirs(output_folder)
 
-# RTSP URLs for each stream
 STREAM_URLS = [
     'rtsp://admin:Stoploss%231@192.168.0.100:554/Streaming/channels/101',
     'rtsp://admin:Stoploss%231@192.168.0.100:554/Streaming/channels/201',
@@ -18,12 +17,10 @@ STREAM_URLS = [
     'rtsp://admin:Stoploss%231@192.168.0.100:554/Streaming/channels/401'
 ]
 
-# Use hardware encoder if available: "h264_omx", "h264_v4l2m2m", etc.
-VIDEO_CODEC = "h264_omx"
-BITRATE = "1M"  # Adjust as needed
-
-# Duration for each recording chunk in seconds
-DURATION = 180  # 3 minutes
+VIDEO_CODEC = "h264_omx"  # or "h264_v4l2m2m"
+BITRATE = "1M"
+DURATION = 150  # 2.5 minutes per file
+RETRY_WAIT = 5  # seconds to wait between rounds if something fails
 
 # -------------------- Global state for GUI --------------------
 recording_status = False
@@ -90,6 +87,8 @@ def record_all_streams():
     while True:
         processes = []
         output_files = []
+        streams_status = [False, False, False, False]
+        recording_status = True
 
         # Start processes for all streams
         for i, url in enumerate(STREAM_URLS):
@@ -105,26 +104,25 @@ def record_all_streams():
                 streams_status[i] = False
 
         if not any(streams_status):
-            print("All streams failed. Retrying in 10 seconds...")
+            print("All streams failed. Waiting before retrying...")
             recording_status = False
-            time.sleep(10)
+            time.sleep(RETRY_WAIT)
             continue
 
-        recording_status = True
-
-        # Wait for all processes to complete
+        # Wait for processes to finish
         for i, proc in enumerate(processes):
             proc.wait()
             if proc.returncode != 0:
                 print(f"Stream {i+1} ended with error code {proc.returncode}")
                 streams_status[i] = False
             else:
-                print(f"Stream {i+1} recording completed.")
+                print(f"Stream {i+1} completed recording.")
 
+        print("Completed one round of recordings.")
         recording_status = False
 
-        print("All streams completed. Waiting before next round...")
-        time.sleep(5)
+        # Wait briefly before starting next chunk to avoid tight loop
+        time.sleep(RETRY_WAIT)
 
 # -------------------- Main --------------------
 if __name__ == "__main__":
