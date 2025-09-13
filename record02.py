@@ -3,74 +3,34 @@ import time
 import os
 import subprocess
 from datetime import datetime
-import tkinter as tk
-import threading
 
-# -------------------- Global variables for GUI --------------------
-recording_status = False
-streams_status = [False, False, False, False]
-
-# -------------------- Configuration --------------------
+# Define the output folder
 output_folder = "/home/pi/homevideo"
 if not os.path.exists(output_folder):
     os.makedirs(output_folder)
 
+# Path for the recorded video list file
 RECORDED_LIST_FILE = os.path.join(output_folder, 'recordedvideolist.txt')
+
+# Constants
 TARGET_WIDTH = 480
 TARGET_HEIGHT = 270
 FPS_CAP = 15.0
-DURATION = 180          # 3 minutes
-ERROR_WAIT = 120        # 2 minutes on error
+DURATION = 180          # 3 minutes per chunk
+ERROR_WAIT = 120        # 2 minutes wait on error
 FOURCC = cv2.VideoWriter_fourcc(*'mp4v')
 
-# -------------------- Tkinter GUI --------------------
-def run_status_window():
-    global recording_status, streams_status
-
-    window = tk.Tk()
-    window.title("Recording Status")
-    window.geometry("300x250")
-
-    recording_label = tk.Label(window, text="Not Recording", fg="red", font=("Helvetica", 16))
-    recording_label.pack(pady=10)
-
-    stream_labels = []
-    for i in range(4):
-        lbl = tk.Label(window, text=f"Stream {i+1}: Unknown", font=("Helvetica", 12))
-        lbl.pack()
-        stream_labels.append(lbl)
-
-    def update_labels():
-        if recording_status:
-            recording_label.config(text="Recording", fg="green")
-        else:
-            recording_label.config(text="Not Recording", fg="red")
-
-        for i in range(4):
-            if streams_status[i]:
-                stream_labels[i].config(text=f"Stream {i+1}: OK", fg="green")
-            else:
-                stream_labels[i].config(text=f"Stream {i+1}: Disconnected", fg="red")
-
-        window.after(1000, update_labels)
-
-    update_labels()
-    window.mainloop()
-
-# Start the GUI in a separate thread
-status_thread = threading.Thread(target=run_status_window, daemon=True)
-status_thread.start()
-
-# -------------------- Helper Functions --------------------
 def append_to_recorded_list(filename):
+    """Append the completed video filename to recordedvideolist.txt."""
     try:
         with open(RECORDED_LIST_FILE, 'a') as f:
             f.write(f"{filename}\n")
         print(f"Appended {filename} to {RECORDED_LIST_FILE}")
     except Exception as e:
-        print(f"Error appending {filename}: {e}")
+        print(f"Error appending {filename} to {RECORDED_LIST_FILE}: {e}")
 
 def compress_with_ffmpeg(input_file):
+    """Compress video with ffmpeg and overwrite only if size is reduced."""
     compressed_file = input_file.replace("_ongoing.mp4", ".mp4")
     try:
         subprocess.run([
@@ -79,7 +39,7 @@ def compress_with_ffmpeg(input_file):
             "-an",
             compressed_file
         ], check=True)
-
+        
         original_size = os.path.getsize(input_file)
         compressed_size = os.path.getsize(compressed_file)
 
@@ -111,25 +71,13 @@ def initialize_captures():
         return None, None, None, None
     return cap1, cap2, cap3, cap4
 
-# -------------------- Main Recording Function --------------------
 def record_and_stitch():
-    global recording_status, streams_status
     while True:
         cap1, cap2, cap3, cap4 = initialize_captures()
-        streams = [cap1, cap2, cap3, cap4]
-        streams_status = [cap.isOpened() for cap in streams]
-
-        if not all(streams_status):
-            print(f"Error: One or more streams failed.")
-            recording_status = False
-            for cap in streams:
-                if cap and cap.isOpened():
-                    cap.release()
+        if cap1 is None:
             print(f"Waiting {ERROR_WAIT} seconds before retrying...")
             time.sleep(ERROR_WAIT)
             continue
-
-        recording_status = True
 
         fps = cap1.get(cv2.CAP_PROP_FPS)
         if fps == 0 or fps > FPS_CAP:
@@ -141,8 +89,7 @@ def record_and_stitch():
 
         if not out.isOpened():
             print("Error: Unable to open VideoWriter")
-            recording_status = False
-            for cap in streams:
+            for cap in [cap1, cap2, cap3, cap4]:
                 cap.release()
             print(f"Waiting {ERROR_WAIT} seconds before retrying...")
             time.sleep(ERROR_WAIT)
@@ -151,11 +98,8 @@ def record_and_stitch():
         start_time = time.time()
         print(f"Starting recording: {ongoing_filename}")
         capture_success = True
-        target_frame_time = 1 / fps
 
         while (time.time() - start_time) < DURATION:
-            frame_start = time.time()
-
             ret1, frame1 = cap1.read()
             ret2, frame2 = cap2.read()
             ret3, frame3 = cap3.read()
@@ -175,16 +119,16 @@ def record_and_stitch():
             combined_frame = cv2.vconcat([top_row, bottom_row])
             out.write(combined_frame)
 
-            elapsed = time.time() - frame_start
-            sleep_time = max(0, target_frame_time - elapsed)
-            time.sleep(sleep_time)
+            cv2.imshow('Recording', combined_frame)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                capture_success = False
+                break
 
         out.release()
-        for cap in streams:
+        for cap in [cap1, cap2, cap3, cap4]:
             cap.release()
 
         cv2.destroyAllWindows()
-        recording_status = False
 
         if not capture_success:
             print(f"Capture failed, deleting {ongoing_filename}")
@@ -200,7 +144,6 @@ def record_and_stitch():
         else:
             print(f"Compression did not succeed in reducing size; keeping {ongoing_filename}")
 
-# -------------------- Main Entry Point --------------------
 if __name__ == "__main__":
     try:
         record_and_stitch()
